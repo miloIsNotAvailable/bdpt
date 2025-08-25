@@ -12,3 +12,6 @@ cmake -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl ..
 
 ## I fucking love code
 https://github.com/Dav1dde/glad/issues/186
+
+## it does work with diffuse and glass (~120 spp)
+![alt text](image.png)
