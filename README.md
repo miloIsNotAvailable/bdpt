@@ -15,3 +15,4 @@ https://github.com/Dav1dde/glad/issues/186
 
 ## it does work with diffuse and glass (~120 spp)
 ![alt text](image.png)
+![alt text](image-1.png)
