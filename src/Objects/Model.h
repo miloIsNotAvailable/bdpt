@@ -27,10 +27,29 @@ class Model {
 
     private:
       GLuint VAO, VBO, EBO;
+      std::vector<Triangle> triangles;
     public:
         Mesh mesh;
+        BVH *bvh;
 
         Model( Mesh &mesh ): mesh(mesh) {
+
+            size_t vert_index = 0;
+            for (size_t s = 0; s < mesh.shapes.size(); s++) {
+                const auto& shape = mesh.shapes[s];
+                for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
+                    triangles.push_back(Triangle(glm::ivec3(
+                        vert_index + 0,
+                        vert_index + 1,
+                        vert_index + 2
+                    )));
+                    vert_index += 3;
+                }
+            }
+
+            std::cout << "building BVH ..." << std::endl;
+            bvh = new BVH( triangles, mesh.vertex );
+            std::cout << "happily built a BVH ..." << std::endl;
 
             glGenVertexArrays(1, &VAO);
             glGenBuffers(1, &VBO);
@@ -73,6 +92,106 @@ class Model {
             glBindVertexArray(VAO);
             glDrawElements(GL_TRIANGLES, mesh.mesh.v_indices.size(), GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
+        }
+
+        bool rayIntersectsAABB( const glm::vec3& origin,
+                                const glm::vec3& dir,
+                                const glm::vec3& minB,
+                                const glm::vec3& maxB,
+                                float& tmin,
+                                float& tmax )
+        {
+            tmin = -std::numeric_limits<float>::infinity();
+            tmax =  std::numeric_limits<float>::infinity();
+
+            for (int i = 0; i < 3; i++) {
+            float invD = 1.0f / dir[i];
+            float t0 = (minB[i] - origin[i]) * invD;
+            float t1 = (maxB[i] - origin[i]) * invD;
+            if (invD < 0.0f) std::swap(t0, t1);
+
+            tmin = t0 > tmin ? t0 : tmin;
+            tmax = t1 < tmax ? t1 : tmax;
+            if (tmax < tmin) return false;
+            }
+            return true;
+        }
+
+        std::optional<Hit> traverseBVH( const BVH* node,
+                                        const std::vector<Vertex>& vertices,
+                                        glm::vec3& origin,
+                                        glm::vec3& dir,
+                                        float *tMin=nullptr, float *tMax=nullptr )
+        {
+        
+            float tmin, tmax;
+            if( node == nullptr ) return std::nullopt;
+            if( !rayIntersectsAABB( origin, dir, node->minVec, node->maxVec, tmin, tmax ) ) return std::nullopt;
+
+            if(  !node->isLeaf ) {
+                std::optional left = traverseBVH(node->left, vertices, origin, dir, tMin, tMax);
+                std::optional right = traverseBVH(node->right, vertices, origin, dir, tMin, tMax);
+                if (left && right) {
+                    float tLeft  = glm::length(left->hitPoint - origin);
+                    float tRight = glm::length(right->hitPoint - origin);
+                    return (tLeft < tRight) ? left : right;
+                }
+            
+                return left ? left : right;
+            }
+
+            std::optional<float> closestHit;
+            glm::vec3 hitNormal;
+            glm::vec3 hitPoint;
+            glm:: vec3 color;
+            MaterialType hitType = MaterialType::Diffuse;
+
+            // Find closest intersection
+            for (Triangle tri : node->triangles) {
+                
+                // int k = mesh.mesh.v_indices[tri + 0];
+                // int l = mesh.mesh.v_indices[tri + 1];
+                // int n = mesh.mesh.v_indices[tri + 2];
+
+                glm::vec3 v0 = vertices[tri.idx.x].position;
+                glm::vec3 v1 = vertices[tri.idx.y].position;
+                glm::vec3 v2 = vertices[tri.idx.z].position;
+
+                glm::vec3 c0 = vertices[tri.idx.x].color;
+                glm::vec3 c1 = vertices[tri.idx.y].color;
+                glm::vec3 c2 = vertices[tri.idx.z].color;
+                
+                Triangle3 tr{v0, v1, v2};
+                float u, v;
+                auto tHit = ray_intersects_triangle(origin, dir, tr, tMin, tMax, &u, &v);
+
+                if (!tHit.has_value()) continue;
+
+                float t = tHit.value();
+                if (!closestHit.has_value() || t < closestHit.value()) {
+                    closestHit = t;
+                    hitNormal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+                    hitPoint = origin + dir * t;
+
+                    color = u * c0 + v * c1 + (1 - u - v) * c2;
+                    
+                    hitType = vertices[tri.idx.x].matType;
+
+                    if( vertices[tri.idx.x].light )
+                        hitType = MaterialType::Light;
+                }
+            }
+    
+            if( !closestHit.has_value() )
+                return std::nullopt;
+
+            return Hit( hitPoint, hitNormal, color, hitType );
+        }
+
+        std::optional<Hit> isect( glm::vec3& origin,
+                                  glm::vec3& dir,
+                                  float *tMin=nullptr, float *tMax=nullptr ) {
+            return traverseBVH( bvh, mesh.vertex, origin, dir, tMin, tMax );
         }
 
         std::optional<Hit> isectRay( glm::vec3 &ray_origin, 

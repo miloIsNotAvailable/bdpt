@@ -302,7 +302,7 @@ void generateCameraSubPath(Model &m, Camera &c, glm::vec2 &pixel_i,
     PathVertex prev = s;
 
     for( int i = 0; i < depth; i ++ ) {
-        auto hitOpt = m.isectRay(s.vec, s.dir);
+        auto hitOpt = m.isect(s.vec, s.dir);
         if (!hitOpt.has_value()) break;
         // if (hitOpt.value().mtype == MaterialType::Light) break; 
 
@@ -455,7 +455,7 @@ void generateLightSubPath(Model &m, std::vector<PathVertex> &path, int depth)
     PathVertex prev = s;
 
     for( int i = 0; i < depth; i ++ ) {
-        auto hitOpt = m.isectRay(s.vec, s.dir);
+        auto hitOpt = m.isect(s.vec, s.dir);
         if (!hitOpt.has_value()) break;
         // if (hitOpt.value().mtype == MaterialType::Light) break; 
 
@@ -656,7 +656,7 @@ void connectPath( Model &m, Camera &c, glm::vec2 &p, glm::vec3 &L ) {
             float tmax = std::sqrt( dist2 );
 
             // visibility check
-            if (m.isectRay(x.vec, dir, &tmin, &tmax)) continue;
+            if (m.isect(x.vec, dir, &tmin, &tmax)) continue;
     
             glm::vec3 c;
             if( s == 0 && t > 0 ) {
@@ -718,10 +718,17 @@ int main() {
         return -1;
     }
 
+    
     Mesh mesh = Mesh( "../objs/cornell_box.obj" );
     
     Scene s = Scene( w, h );
     Model m( mesh );
+
+    // for( auto &t : m.bvh->triangles) {
+    //     printf( "%f, %f, %f\n", mesh.vertex[ t.idx.x ].position.x, mesh.vertex[ t.idx.x ].position.y, mesh.vertex[ t.idx.x ].position.z );
+    //     printf( "%f, %f, %f\n", mesh.vertex[ t.idx.y ].position.x, mesh.vertex[ t.idx.y ].position.y, mesh.vertex[ t.idx.y ].position.z );
+    //     printf( "%f, %f, %f\n\n", mesh.vertex[ t.idx.z ].position.x, mesh.vertex[ t.idx.z ].position.y, mesh.vertex[ t.idx.z ].position.z );
+    // }
 
     glm::vec3 center( .5, 1.0, -6. );
     glm::vec3 eye( .3, .3, 0. );
@@ -879,7 +886,7 @@ int main() {
                 float tmin = 1e-4f;
                 float tmax = std::sqrt( dist2 ) - tmin;
 
-                if (m.isectRay(x.vec, dir, &tmin, &tmax)) continue;
+                if (m.isect(x.vec, dir, &tmin, &tmax)) continue;
 
                 if ( s == 0 && t > 0 ){
                     connected.vertex( x.vec ); connected.color( glm::vec3( 1., 0., 1. ) );

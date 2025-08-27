@@ -12,22 +12,7 @@
 #include "tiny_obj_loader.h"
 #include <iostream>
 #include <string>
-
-enum class MaterialType {
-    Light,
-    Diffuse,
-    Glossy,
-    Mirror,
-    Dieletric
-};
-
-struct Vertex {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec3 color;
-    MaterialType matType;
-    bool light=false;
-};
+#include "BVH.h"
 
 typedef struct {
     std::vector<glm::vec3> vertices;
@@ -92,7 +77,6 @@ struct Light {
                 continue; // skip non-triangles
             }
     
-            // For each vertex in the face
             for (int v = 0; v < fv; v++) {
                 tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
                 int v_idx = idx.vertex_index * 3;
@@ -103,8 +87,8 @@ struct Light {
                     attrib.vertices[v_idx + 2]
                 );
     
-                vertex /= 200.0f;
-                vertex -= glm::vec3(1.0f);
+                // vertex /= 200.0f;
+                // vertex -= glm::vec3(1.0f);
     
                 vertices.push_back(vertex);
             }
@@ -122,6 +106,7 @@ struct Light {
         std::vector<tinyobj::material_t> materials;
         std::vector<Light> lights;
         std::vector<Vertex> vertex;
+        // std::vector<Triangle> triangles;
 
         Mesh(std::string filename) : filename(filename) {
             tinyobj::attrib_t attrib;
@@ -189,81 +174,97 @@ struct Light {
             v -= glm::vec3(1.0f);
         }
 
-          mesh.colors.resize(mesh.vertices.size(), glm::vec3(1.0f)); // default white
+        for (auto& v : attrib.vertices) {
+            v /= 200.0f;
+            v -= 1.0f;
+        }
 
-          for (size_t s = 0; s < shapes.size(); s++) {
-              const auto& shape = shapes[s];
-              const auto& mat_ids = shape.mesh.material_ids;
-              
-              bool isLight = shape.name == "light";
-              
-              size_t index_offset = 0;
-              for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
-                  int mat_id = mat_ids[f];
-                  glm::vec3 color(1.0f);
-                  MaterialType mtype = MaterialType::Diffuse;
-                  
-                  if (mat_id >= 0 && mat_id < materials.size()) {
-                    auto& mat = materials[mat_id];
-                    bool isDieletric = mat.name == "glass";
+        vertex.reserve(attrib.vertices.size() / 3);
+        // triangles.reserve( attrib.vertices.size() / 6 );
+        // mesh.colors.resize(attrib.vertices.size() / 3);
 
-                    // std::cout << isDieletric << std::endl; 
+        mesh.colors.resize(mesh.vertices.size(), glm::vec3(1.0f)); // default white
 
-                    color = glm::vec3(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
+        for (size_t s = 0; s < shapes.size(); s++) {
+            const auto& shape = shapes[s];
+            const auto& mat_ids = shape.mesh.material_ids;
+            
+            bool isLight = shape.name == "light";
 
-                    if (mat.emission[0] > 0.0f || mat.emission[1] > 0.0f || mat.emission[2] > 0.0f) {
-                        mtype = MaterialType::Light;
-                    }
-                    else if ((mat.specular[0] + mat.specular[1] + mat.specular[2]) > 0.5f) {
-                        mtype = MaterialType::Mirror;
-                    } 
-                    else if( isDieletric ) {
-                        mtype = MaterialType::Dieletric;
-                    }
-                    else {
-                        mtype = MaterialType::Diffuse;
-                    }
-                  }
-          
-                  for (size_t v = 0; v < 3; v++) {
-                    tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
-                    
-                    int ind = shape.mesh.indices[3 * f + v].vertex_index; 
-                    mesh.colors[ind] = color;
+            size_t index_offset = 0;
+            for (size_t f = 0; f < shape.mesh.num_face_vertices.size(); f++) {
+                int mat_id = mat_ids[f];
+                glm::vec3 color(1.0f);
+                MaterialType mtype = MaterialType::Diffuse;
+                
+                if (mat_id >= 0 && mat_id < materials.size()) {
+                auto& mat = materials[mat_id];
+                bool isDieletric = mat.name == "glass";
 
-                    glm::vec3 pos(
-                        attrib.vertices[3 * idx.vertex_index + 0],
-                        attrib.vertices[3 * idx.vertex_index + 1],
-                        attrib.vertices[3 * idx.vertex_index + 2]
-                    );
+                // std::cout << isDieletric << std::endl; 
 
-                    pos /= 200.0f;
-                    pos -= glm::vec3(1.0f);
-        
-                    glm::vec3 normal(0.0f);
-                    if (idx.normal_index >= 0) {
-                        normal = glm::vec3(
-                            attrib.normals[3 * idx.normal_index + 0],
-                            attrib.normals[3 * idx.normal_index + 1],
-                            attrib.normals[3 * idx.normal_index + 2]
-                        );
-                    }
-        
-                    Vertex vert;
-                    vert.position = pos;
-                    vert.normal   = normal;
-                    vert.color    = color;
-                    vert.matType  = mtype;
-                    vert.light    = isLight;
-        
-                    // vertex[idx.vertex_index] = vert;
-                    vertex.push_back( vert );
+                color = glm::vec3(mat.diffuse[0], mat.diffuse[1], mat.diffuse[2]);
+
+                if (mat.emission[0] > 0.0f || mat.emission[1] > 0.0f || mat.emission[2] > 0.0f) {
+                    mtype = MaterialType::Light;
+                }
+                else if ((mat.specular[0] + mat.specular[1] + mat.specular[2]) > 0.5f) {
+                    mtype = MaterialType::Mirror;
+                } 
+                else if( isDieletric ) {
+                    mtype = MaterialType::Dieletric;
+                }
+                else {
+                    mtype = MaterialType::Diffuse;
+                }
                 }
         
-                index_offset += shape.mesh.num_face_vertices[f];
-              }
-          }
+            //   int idxBuffer[3];
+                for (size_t v = 0; v < 3; v++) {
+                tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
+                
+                int ind = shape.mesh.indices[3 * f + v].vertex_index; 
+                mesh.colors[ind] = color;
+
+                glm::vec3 pos(
+                    attrib.vertices[3 * idx.vertex_index + 0],
+                    attrib.vertices[3 * idx.vertex_index + 1],
+                    attrib.vertices[3 * idx.vertex_index + 2]
+                );
+
+                // pos /= 200.0f;
+                // pos -= glm::vec3(1.0f);
     
+                glm::vec3 normal(0.0f);
+                if (idx.normal_index >= 0) {
+                    normal = glm::vec3(
+                        attrib.normals[3 * idx.normal_index + 0],
+                        attrib.normals[3 * idx.normal_index + 1],
+                        attrib.normals[3 * idx.normal_index + 2]
+                    );
+                }
+    
+                Vertex vert;
+                vert.position = pos;
+                vert.normal   = normal;
+                vert.color    = color;
+                vert.matType  = mtype;
+                vert.light    = isLight;
+    
+                // vertex[idx.vertex_index] = vert;
+
+                // BLACK MAGIC AHEAD BEWARE
+                // it has to be this way
+                // the image gets darker otherwise for whatever reason
+                // idxBuffer[ v ] = int( vertex.size() );
+                vertex.push_back( vert );
+            }
+            
+            // triangles.push_back( Triangle(glm::ivec3(idxBuffer[0], idxBuffer[1], idxBuffer[2])) );
+            index_offset += shape.mesh.num_face_vertices[f];
+            }
+        }
+
         //   for( tinyobj::shape_t &s : shapes ) {
         //     if( s.name != "light" ) continue;
 
